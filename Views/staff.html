@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Вход для сотрудников — ExtraMed</title>
+  <link rel="stylesheet" href="/site.css">
+  <script src="/staff.js" defer></script>
+</head>
+<body class="reader-page">
+  <header class="topbar"><div class="shell topbar-content"><a class="brand" href="/"><span class="brand-mark icon icon-cross" aria-hidden="true"></span>Extra<span>Med</span></a></div></header>
+  <main class="reader-shell staff-shell">
+    <div class="panel">
+      <div class="panel-heading">
+        <span class="tile icon icon-lock" aria-hidden="true"></span>
+        <div><h1>Вход для сотрудников</h1><p>Для просмотра паспорта и полиса ОМС.</p></div>
+      </div>
+      <form id="staff-form" method="post" action="/api/staff/login">
+        <label for="password">Пароль сотрудника</label>
+        <input type="password" id="password" name="password" autocomplete="current-password" required maxlength="256">
+        <p class="notice error" role="alert" id="login-error" hidden></p>
+        <button class="button primary full-width" type="submit" id="login-button">Войти <span aria-hidden="true">→</span></button>
+      </form>
+      <div id="staff-session" hidden>
+        <p class="notice" role="status">Вход выполнен. Откройте ссылку с NFC-метки, чтобы увидеть документы в карточке.</p>
+        <button class="button outline" id="logout-button" type="button">Выйти</button>
+      </div>
+      <a href="/" id="back-link" class="back-link">← На главную</a>
+    </div>
+  </main>
+</body>
+</html>

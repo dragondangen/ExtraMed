@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Экстренная медицинская карточка пациента по NFC-метке на одежде.">
+  <title>ExtraMed — экстренная медицинская карточка</title>
+  <link rel="stylesheet" href="/site.css">
+  <script src="/setup.js" type="module"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="shell topbar-content">
+      <a class="brand" href="/" aria-label="ExtraMed, главная"><span class="brand-mark icon icon-cross" aria-hidden="true"></span>Extra<span>Med</span></a>
+      <nav aria-label="Основное меню">
+        <a class="nav-active" href="#anketa">Создать карточку</a>
+        <a href="#nfc">Запись NFC</a>
+      </nav>
+      <a class="staff-link" href="/staff"><span class="icon icon-lock" aria-hidden="true"></span> Вход для сотрудников</a>
+    </div>
+  </header>
+
+  <main class="shell">
+    <section class="hero" aria-labelledby="hero-title">
+      <div class="hero-copy">
+        <div class="hero-label"><span aria-hidden="true"></span> ЭКСТРЕННАЯ МЕДИЦИНСКАЯ КАРТОЧКА</div>
+        <h1 id="hero-title">Важное о пациенте<br><em>в одно касание.</em></h1>
+        <p>Создайте карточку и запишите ссылку на NFC-метку в одежде. Сотрудник скорой приложит смартфон и сразу увидит медицинские сведения.</p>
+        <a class="button primary" href="#anketa">Заполнить анкету <span aria-hidden="true">↓</span></a>
+      </div>
+      <figure class="hero-photo">
+        <img src="/images/nfc-shirt.jpg" alt="Смартфон подносят к метке, вшитой в футболку" width="1720" height="914" fetchpriority="high">
+        <figcaption><span class="icon icon-nfc" aria-hidden="true"></span> NFC-метка на одежде</figcaption>
+      </figure>
+    </section>
+
+    <div class="workflow">
+      <section id="anketa" aria-labelledby="form-title">
+        <div class="section-heading">
+          <div><h2 id="form-title">Анкета пациента</h2><p>Укажите сведения для бригады скорой помощи.</p></div>
+          <span class="required-note"><b>*</b> Обязательные поля</span>
+        </div>
+        <form id="patient-form" method="post" action="/api/cards" enctype="multipart/form-data">
+          <fieldset class="panel">
+            <legend class="sr-only">Личные данные</legend>
+            <div class="panel-heading">
+              <span class="tile icon icon-person" aria-hidden="true"></span>
+              <div><h3>Личные данные</h3><p>Для идентификации пациента.</p></div>
+            </div>
+            <div class="photo-field">
+              <div class="photo-placeholder"><span class="icon icon-camera" aria-hidden="true"></span><img id="photo-preview" alt="Загруженное фото" hidden></div>
+              <div>
+                <label for="photo" class="upload-label button outline">Загрузить фото <span aria-hidden="true">↑</span></label>
+                <input class="sr-only photo-input" id="photo" name="photo" type="file" accept="image/jpeg,image/png,image/webp" aria-describedby="photo-help">
+                <button class="text-button" id="remove-photo" type="button" hidden>Удалить</button>
+                <small id="photo-help">JPG, PNG или WebP до 5 МБ</small>
+              </div>
+            </div>
+            <label for="fullName">ФИО <b>*</b></label>
+            <input id="fullName" name="fullName" autocomplete="name" required minlength="2" maxlength="160" placeholder="Иванов Иван Иванович">
+            <div class="fields-row">
+              <div>
+                <label for="sex">Пол <b>*</b></label>
+                <select id="sex" name="sex" required>
+                  <option value="">Выберите пол</option><option value="female">Женский</option><option value="male">Мужской</option><option value="unknown">Не указан</option>
+                </select>
+              </div>
+              <div>
+                <label for="age">Возраст <b>*</b></label>
+                <input id="age" name="age" type="number" inputmode="numeric" min="0" max="125" step="1" required placeholder="Полных лет">
+              </div>
+            </div>
+          </fieldset>
+
+          <fieldset class="panel">
+            <legend class="sr-only">Медицинские сведения</legend>
+            <div class="panel-heading">
+              <span class="tile icon icon-cross" aria-hidden="true"></span>
+              <div><h3>Медицинские сведения</h3><p>Укажите то, что важно при оказании помощи.</p></div>
+            </div>
+            <div class="form-field">
+              <label for="allergies">Аллергические реакции</label>
+              <textarea id="allergies" name="allergies" rows="3" maxlength="1500" placeholder="Аллерген и реакция или «неизвестно»"></textarea>
+            </div>
+            <div class="form-field">
+              <label for="medications">Постоянно принимаемые лекарства</label>
+              <textarea id="medications" name="medications" rows="3" maxlength="1500" placeholder="Название, дозировка и частота приёма"></textarea>
+            </div>
+            <div class="form-field">
+              <label for="history">Перенесённые заболевания, операции и хронические патологии</label>
+              <textarea id="history" name="history" rows="3" maxlength="2500" placeholder="Например, диабет, астма, гипертония, сердечная недостаточность"></textarea>
+            </div>
+            <div class="form-field">
+              <label for="pregnancy">Беременность</label>
+              <select id="pregnancy" name="pregnancy">
+                <option value="unknown">Не указано</option><option value="yes">Да</option><option value="no">Нет</option><option value="na">Неприменимо</option>
+              </select>
+            </div>
+            <div class="form-field" id="pregnancy-field" hidden>
+              <label for="pregnancyDetails">Срок и примечания</label>
+              <input id="pregnancyDetails" name="pregnancyDetails" maxlength="500" placeholder="Например, 24 недели">
+            </div>
+          </fieldset>
+
+          <fieldset class="panel" id="documents" tabindex="-1">
+            <legend class="sr-only">Документы</legend>
+            <div class="panel-heading">
+              <span class="tile icon icon-lock" aria-hidden="true"></span>
+              <div><h3>Документы</h3><p>Доступны сотрудникам после входа.</p></div>
+            </div>
+            <p class="notice" id="staff-availability" hidden>Чтобы сохранить документы, администратор должен настроить вход для сотрудников.</p>
+            <div class="fields-row">
+              <div><label for="passport">Паспорт гражданина РФ</label><input id="passport" name="passport" inputmode="numeric" pattern="[0-9 ]{10,16}" maxlength="16" placeholder="Серия и номер"></div>
+              <div><label for="policy">Полис ОМС</label><input id="policy" name="policy" maxlength="40" placeholder="Номер полиса"></div>
+            </div>
+          </fieldset>
+
+          <div class="save-panel">
+            <label class="check-row"><input type="checkbox" id="consent" name="consent" value="yes" required><span>Подтверждаю, что медицинские и личные сведения из карточки смогут увидеть все, у кого есть ссылка с метки. <b>*</b></span></label>
+            <p id="form-error" class="notice error" role="alert" tabindex="-1" hidden></p>
+            <button class="button primary" id="save-card" type="submit">Создать карточку <span aria-hidden="true">→</span></button>
+          </div>
+        </form>
+      </section>
+
+      <aside class="sidebar" aria-label="Предпросмотр и запись">
+        <section class="panel preview-panel" aria-labelledby="preview-title">
+          <div class="preview-title"><h2 id="preview-title">Предпросмотр</h2><span class="live-status"><i aria-hidden="true"></i> Обновляется</span></div>
+          <p>Как карточка выглядит на смартфоне.</p>
+          <div class="phone">
+            <div class="phone-header"><span class="icon icon-cross" aria-hidden="true"></span> Экстренная карточка</div>
+            <div class="phone-content">
+              <div class="phone-profile">
+                <div class="phone-avatar"><span class="icon icon-person" aria-hidden="true"></span><img id="preview-photo" alt="" hidden></div>
+                <div><strong id="preview-name">ФИО пациента</strong><div id="preview-meta">Пол и возраст</div></div>
+              </div>
+              <div class="phone-alert"><span aria-hidden="true">!</span><div><strong>Аллергические реакции</strong><p id="preview-allergies">Не указано</p></div></div>
+              <div class="phone-line"><strong>Постоянные лекарства</strong><p id="preview-medications">Не указано</p></div>
+              <div class="phone-line"><strong>Заболевания и операции</strong><p id="preview-history">Не указано</p></div>
+              <div class="phone-line" id="preview-pregnancy-line" hidden><strong>Беременность</strong><p id="preview-pregnancy"></p></div>
+            </div>
+          </div>
+          <div class="preview-access"><span class="icon icon-lock" aria-hidden="true"></span> Паспорт и ОМС требуют входа сотрудника.</div>
+        </section>
+
+        <section id="nfc" class="panel nfc-panel" aria-labelledby="nfc-title">
+          <div class="panel-heading">
+            <span class="tile icon icon-nfc" aria-hidden="true"></span>
+            <div><h2 id="nfc-title">Запись на NFC</h2><p id="nfc-summary">Ссылка появится после сохранения анкеты.</p></div>
+          </div>
+          <a id="card-link" class="button outline full-width" href="/" hidden>Открыть карточку <span aria-hidden="true">↗</span></a>
+          <button id="write-nfc" class="button primary full-width" type="button" disabled>Записать NFC-метку</button>
+          <button id="cancel-nfc" class="button outline full-width" type="button" hidden>Отменить запись</button>
+          <details class="manual" id="manual">
+            <summary>Как записать метку</summary>
+            <p>Откройте сайт в Chrome на Android, включите NFC, нажмите «Записать NFC-метку» и приложите телефон к метке. Новая ссылка заменит прежнее содержимое метки.</p>
+            <p>Для записи через отдельное приложение скопируйте ссылку и добавьте её на метку как запись NDEF типа URL.</p>
+            <div id="nfc-url-field" hidden>
+              <label for="nfc-url">Ссылка для NFC</label>
+              <input id="nfc-url" readonly>
+              <button type="button" class="button outline full-width" id="copy-url">Скопировать ссылку</button>
+            </div>
+          </details>
+          <p class="notice" id="nfc-status" role="status" hidden></p>
+        </section>
+      </aside>
+    </div>
+  </main>
+
+  <footer class="footer"><div class="shell"><a class="brand" href="/"><span class="brand-mark icon icon-cross" aria-hidden="true"></span>Extra<span>Med</span></a><span>Экстренная медицинская карточка</span></div></footer>
+</body>
+</html>
