@@ -10,6 +10,7 @@ const status = byId('nfc-status');
 const formError = byId('form-error');
 const nfcAvailable = window.isSecureContext && 'NDEFReader' in window;
 let photoPreview;
+let photoLimitMb = 5;
 let savedCard;
 let changed = false;
 let saving = false;
@@ -19,8 +20,8 @@ function imagePreview() {
   if (photoPreview) URL.revokeObjectURL(photoPreview);
   const file = photo.files[0];
   photo.setCustomValidity('');
-  if (file && file.size > 5_000_000) {
-    photo.setCustomValidity('Выберите фото размером до 5 МБ.');
+  if (file && file.size > photoLimitMb * 1_000_000) {
+    photo.setCustomValidity('Выберите фото размером до ' + photoLimitMb + ' МБ.');
   }
   photoPreview = file && photo.validity.valid ? URL.createObjectURL(file) : null;
   for (const id of ['photo-preview', 'preview-photo']) {
@@ -114,6 +115,10 @@ form.addEventListener('submit', async event => {
     const result = await response.json().catch(() => ({}));
     if (!response.ok) {
       failedField = result.field;
+      if (response.status === 413) {
+        failedField = 'photo';
+        throw new Error(result.message || 'Выберите фото меньшего размера.');
+      }
       throw new Error(result.message || (response.status === 429
         ? 'Слишком много попыток. Повторите позже.'
         : 'Не удалось сохранить карточку. Попробуйте ещё раз.'));
@@ -191,6 +196,11 @@ cancel.addEventListener('click', () => writing?.abort());
 
 fetch('/api/settings').then(response => response.json()).then(settings => {
   byId('staff-availability').hidden = settings.staffEnabled;
+  if (Number.isInteger(settings.photoLimitMb)) {
+    photoLimitMb = settings.photoLimitMb;
+    byId('photo-help').textContent = 'JPG, PNG или WebP до ' + photoLimitMb + ' МБ';
+    imagePreview();
+  }
 }).catch(() => {});
 
 imagePreview();

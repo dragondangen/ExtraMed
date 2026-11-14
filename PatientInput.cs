@@ -67,10 +67,11 @@ internal static class PatientInput
         value.Count(char.IsAsciiDigit) == count && value.All(character => char.IsAsciiDigit(character) || character == ' ');
 
     public static async Task<(string? ContentType, byte[]? Bytes, string? Error)> ReadPhoto(
-        IFormFile? file, CancellationToken cancellation)
+        IFormFile? file, int limitMb, CancellationToken cancellation)
     {
         if (file is null) return (null, null, null);
-        if (file.Length is 0 or > 5_000_000) return (null, null, "Размер фотографии должен быть от 1 байта до 5 МБ.");
+        if (file.Length == 0 || file.Length > limitMb * 1_000_000L)
+            return (null, null, $"Размер фотографии должен быть от 1 байта до {limitMb} МБ.");
 
         using var stream = new MemoryStream((int)file.Length);
         await file.CopyToAsync(stream, cancellation);

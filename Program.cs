@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.DataProtection;
@@ -7,16 +8,38 @@ var builder = WebApplication.CreateBuilder(args);
 var settings = new CardSettings(builder.Configuration, builder.Environment);
 Uri? mobileOrigin = settings.MobileOrigin;
 
-var keyDirectory = Directory.CreateDirectory(Path.Combine(settings.DataDirectory, "keys"));
-builder.Services.AddDataProtection().SetApplicationName("ExtraMed").PersistKeysToFileSystem(keyDirectory);
+if (settings.UseVercel)
+{
+    if (builder.Configuration["PORT"] is { Length: > 0 } configuredPort)
+    {
+        if (!int.TryParse(configuredPort, NumberStyles.None, CultureInfo.InvariantCulture, out var port) ||
+            port is < 1 or > 65535)
+            throw new InvalidOperationException("PORT must be a valid TCP port.");
+        builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
+    }
+
+    builder.Services.AddSingleton<IDataProtectionProvider>(VercelDataProtector.FromConfiguration(builder.Configuration));
+    builder.Services.AddSingleton(new VercelBlobSettings(builder.Configuration));
+    builder.Services.AddHttpClient<ICardStorage, VercelBlobCardStorage>(http => http.Timeout = TimeSpan.FromSeconds(15))
+        .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false })
+        .RemoveAllLoggers();
+}
+else
+{
+    var keyDirectory = Directory.CreateDirectory(Path.Combine(settings.DataDirectory, "keys"));
+    builder.Services.AddDataProtection().SetApplicationName("ExtraMed").PersistKeysToFileSystem(keyDirectory);
+    builder.Services.AddSingleton<ICardStorage, FileCardStorage>();
+}
+
 builder.Services.AddSingleton(settings);
-builder.Services.AddSingleton<CardStore>();
+builder.Services.AddTransient<CardStore>();
 builder.Services.AddAuthentication("Staff").AddCookie("Staff", options =>
 {
     options.Cookie.Name = "ExtraMed.Staff";
     options.Cookie.HttpOnly = true;
     options.Cookie.SameSite = SameSiteMode.Strict;
-    options.Cookie.SecurePolicy = mobileOrigin is null ? CookieSecurePolicy.SameAsRequest : CookieSecurePolicy.Always;
+    options.Cookie.SecurePolicy = settings.UseVercel || mobileOrigin is not null
+        ? CookieSecurePolicy.Always : CookieSecurePolicy.SameAsRequest;
     options.ExpireTimeSpan = TimeSpan.FromHours(4);
     options.SlidingExpiration = false;
 });
@@ -30,14 +53,21 @@ builder.Services.AddRateLimiter(options =>
         context.Connection.RemoteIpAddress?.ToString() ?? "local",
         _ => new FixedWindowRateLimiterOptions { PermitLimit = 15, Window = TimeSpan.FromMinutes(10) }));
 });
-builder.WebHost.ConfigureKestrel(options => options.Limits.MaxRequestBodySize = 6_000_000);
+builder.WebHost.ConfigureKestrel(options => options.Limits.MaxRequestBodySize =
+    settings.UseVercel ? 4_450_000 : 6_000_000);
 
 var app = builder.Build();
-// With a reverse proxy, forwarded headers from loopback proxies are trusted by default.
-app.UseForwardedHeaders(new ForwardedHeadersOptions
+var forwardedHeaders = new ForwardedHeadersOptions
 {
     ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto
-});
+};
+if (settings.UseVercel)
+{
+    // The Vercel ingress overwrites these headers. Direct access to Kestrel must stay behind that ingress.
+    forwardedHeaders.KnownIPNetworks.Clear();
+    forwardedHeaders.KnownProxies.Clear();
+}
+app.UseForwardedHeaders(forwardedHeaders);
 app.Use(async (context, next) =>
 {
     bool privateRoute = context.Request.Path.StartsWithSegments("/api") ||
@@ -53,9 +83,9 @@ app.Use(async (context, next) =>
         context.Response.Headers["X-Robots-Tag"] = "noindex, nofollow";
     }
 
-    if (mobileOrigin is not null && !context.Request.IsHttps)
+    if ((settings.UseVercel || mobileOrigin is not null) && !context.Request.IsHttps)
     {
-        if (HttpMethods.IsGet(context.Request.Method) || HttpMethods.IsHead(context.Request.Method))
+        if (mobileOrigin is not null && (HttpMethods.IsGet(context.Request.Method) || HttpMethods.IsHead(context.Request.Method)))
         {
             var target = mobileOrigin.GetLeftPart(UriPartial.Authority) +
                 context.Request.Path.ToUriComponent() + context.Request.QueryString.ToUriComponent();
@@ -67,9 +97,24 @@ app.Use(async (context, next) =>
         }
         return;
     }
-    if (mobileOrigin is not null) context.Response.Headers["Strict-Transport-Security"] = "max-age=31536000";
+    if (settings.UseVercel || mobileOrigin is not null)
+        context.Response.Headers["Strict-Transport-Security"] = "max-age=31536000";
 
-    await next();
+    try
+    {
+        await next();
+    }
+    catch (HttpRequestException exception) when (settings.UseVercel && !context.Response.HasStarted)
+    {
+        app.Logger.LogWarning("Vercel Blob request failed. Status: {Status}", exception.StatusCode);
+        await Error(503, "Хранилище карточек временно недоступно. Попробуйте ещё раз.").ExecuteAsync(context);
+    }
+    catch (TaskCanceledException) when (settings.UseVercel && !context.RequestAborted.IsCancellationRequested &&
+        !context.Response.HasStarted)
+    {
+        app.Logger.LogWarning("Vercel Blob request timed out.");
+        await Error(503, "Хранилище карточек отвечает слишком долго. Попробуйте ещё раз.").ExecuteAsync(context);
+    }
 });
 app.UseStaticFiles();
 app.UseRateLimiter();
@@ -94,11 +139,15 @@ app.MapPost("/api/cards", async (HttpContext context, CardStore store, Cancellat
     {
         return Error(400, "Не удалось прочитать анкету. Проверьте размер фотографии.");
     }
+    catch (BadHttpRequestException ex) when (ex.StatusCode == StatusCodes.Status413PayloadTooLarge)
+    {
+        return Error(413, $"Размер фотографии должен быть не более {settings.PhotoLimitMb} МБ.", "photo");
+    }
 
     var validation = PatientInput.Parse(form);
     if (validation.Error is { } invalid) return Error(400, invalid.Message, invalid.Field);
 
-    var photo = await PatientInput.ReadPhoto(form.Files.GetFile("photo"), cancellation);
+    var photo = await PatientInput.ReadPhoto(form.Files.GetFile("photo"), settings.PhotoLimitMb, cancellation);
     if (photo.Error is not null) return Error(400, photo.Error, "photo");
 
     var patient = validation.Patient!;
@@ -140,7 +189,11 @@ app.MapGet("/api/cards/{id}/documents", async (string id, HttpContext context, C
         : Results.Ok(new { card.Patient.Passport, card.Patient.Policy });
 });
 
-app.MapGet("/api/settings", () => Results.Ok(new { staffEnabled = settings.StaffPassword is not null }));
+app.MapGet("/api/settings", () => Results.Ok(new
+{
+    staffEnabled = settings.StaffPassword is not null,
+    photoLimitMb = settings.PhotoLimitMb
+}));
 
 app.MapGet("/api/staff/session", (HttpContext context) => Results.Ok(new
 {
